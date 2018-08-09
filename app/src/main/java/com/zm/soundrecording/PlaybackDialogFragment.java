@@ -93,7 +93,7 @@ public class PlaybackDialogFragment extends DialogFragment {
 
         mSeekBar = (SeekBar) view.findViewById(R.id.seekbar);
         ColorFilter filter = new LightingColorFilter
-                (getResources().getColor(R.color.colorAccent), getResources().getColor(R.color.colorAccent));
+                (getResources().getColor(R.color.green), getResources().getColor(R.color.green));
         mSeekBar.getProgressDrawable().setColorFilter(filter);
         mSeekBar.getThumb().setColorFilter(filter);
         mFileLengthTextView.setText(String.valueOf(mFileLength));

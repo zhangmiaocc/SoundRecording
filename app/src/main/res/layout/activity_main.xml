@@ -22,7 +22,7 @@
         android:layout_width="match_parent"
         android:layout_height="54dip"
         android:layout_weight="1"
-        android:background="#57D982"
+        android:background="@color/green"
         android:scaleType="center"
         android:src="@drawable/ic_media_play"
         />
