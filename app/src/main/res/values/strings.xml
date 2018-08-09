@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">SoundRecording</string>
+
+    <string name="default_file_name">My Recording</string>
+</resources>
