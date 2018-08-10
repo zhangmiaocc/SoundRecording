@@ -1,4 +1,7 @@
 # SoundRecording
+
+参考自：https://github.com/dkim0419/SoundRecorder
+my blog: https://zhangmiao.cc/2018/08/09/%E5%BD%95%E9%9F%B3SoundRecording/
 #### 效果图
 | 首页 | 录音 | 播放 |
 | ---- | ---- | ---- |
