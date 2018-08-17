@@ -4,12 +4,12 @@ import android.Manifest;
 import android.app.Dialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.SystemClock;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.DialogFragment;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AlertDialog;
@@ -22,13 +22,14 @@ import android.widget.Toast;
 import com.melnykov.fab.FloatingActionButton;
 
 import java.io.File;
+import java.util.ArrayList;
 
 /**
  * 开始录音的 DialogFragment
  */
 
 public class RecordAudioDialogFragment extends DialogFragment {
-
+    private static final int MY_PERMISSIONS_REQUEST_AUDIO = 1;
     private static final String TAG = "RecordAudioDialogFragme";
 
     private int mRecordPromptCount = 0;
@@ -75,13 +76,32 @@ public class RecordAudioDialogFragment extends DialogFragment {
         mFabRecord.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (ContextCompat.checkSelfPermission(getActivity(), Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                        != PackageManager.PERMISSION_GRANTED) {
-                    ActivityCompat.requestPermissions(getActivity()
-                            , new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.RECORD_AUDIO}, 1);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    ArrayList<String> permissionList = new ArrayList<String>();
+                    if (ContextCompat.checkSelfPermission(getActivity(), Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                        permissionList.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+                    }
+                    if (ContextCompat.checkSelfPermission(getActivity(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                        permissionList.add(Manifest.permission.RECORD_AUDIO);
+                    }
+                    if (permissionList.size() > 0) {
+                        String requestPermissions[] = permissionList.toArray(new String[permissionList.size()]);
+                        requestPermissions(requestPermissions, MY_PERMISSIONS_REQUEST_AUDIO);
+                    } else {
+                        try {
+                            onRecord(mStartRecording);
+                            mStartRecording = !mStartRecording;
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
                 } else {
-                    onRecord(mStartRecording);
-                    mStartRecording = !mStartRecording;
+                    try {
+                        onRecord(mStartRecording);
+                        mStartRecording = !mStartRecording;
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
 
             }
@@ -169,13 +189,16 @@ public class RecordAudioDialogFragment extends DialogFragment {
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        switch (requestCode) {
-            case 1:
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED
-                        && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+        if (requestCode == MY_PERMISSIONS_REQUEST_AUDIO) {
+            if (grantResults != null && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                try {
                     onRecord(mStartRecording);
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-                break;
+            } else {
+                Toast.makeText(getActivity(), "需要打开录音储存权限！", Toast.LENGTH_SHORT).show();
+            }
         }
     }
 

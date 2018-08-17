@@ -1,0 +1,970 @@
+Index: app/src/main/res/drawable/bg_white_radius.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/res/drawable/bg_white_radius.xml	(revision )
++++ app/src/main/res/drawable/bg_white_radius.xml	(revision )
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android">
++
++    <solid android:color="@color/white"/>
++
++    <corners
++        android:bottomLeftRadius="10dp"
++        android:bottomRightRadius="10dp"
++        android:topLeftRadius="10dp"
++        android:topRightRadius="10dp"/>
++
++</shape>
+\ No newline at end of file
+Index: app/src/main/java/com/zm/soundrecording/PlaybackDialogFragment.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package com.zm.soundrecording;\n\nimport android.annotation.SuppressLint;\nimport android.app.AlertDialog;\nimport android.app.Dialog;\nimport android.graphics.ColorFilter;\nimport android.graphics.LightingColorFilter;\nimport android.media.MediaPlayer;\nimport android.os.Bundle;\nimport android.os.Handler;\nimport android.support.annotation.NonNull;\nimport android.support.v4.app.DialogFragment;\nimport android.util.Log;\nimport android.view.View;\nimport android.view.Window;\nimport android.view.WindowManager;\nimport android.widget.SeekBar;\nimport android.widget.TextView;\n\nimport com.melnykov.fab.FloatingActionButton;\n\nimport java.io.IOException;\nimport java.util.concurrent.TimeUnit;\n\n/**\n * 播放录音的 DialogFragment\n *\n */\n\npublic class PlaybackDialogFragment extends DialogFragment {\n\n    private static final String LOG_TAG = \"PlaybackFragment\";\n\n    private static final String ARG_ITEM = \"recording_item\";\n    private RecordingItem item;\n\n    private Handler mHandler = new Handler();\n\n    private MediaPlayer mMediaPlayer = null;\n\n    private SeekBar mSeekBar = null;\n    private FloatingActionButton mPlayButton = null;\n    private TextView mCurrentProgressTextView = null;\n    private TextView mFileNameTextView = null;\n    private TextView mFileLengthTextView = null;\n\n    //stores whether or not the mediaplayer is currently playing audio\n    private boolean isPlaying = false;\n\n    //stores minutes and seconds of the length of the file.\n    long minutes = 0;\n    long seconds = 0;\n    private static long mFileLength = 0;\n\n    public static PlaybackDialogFragment newInstance(RecordingItem item) {\n        PlaybackDialogFragment f = new PlaybackDialogFragment();\n        Bundle b = new Bundle();\n        b.putParcelable(ARG_ITEM, item);\n        f.setArguments(b);\n        return f;\n    }\n\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n        item = getArguments().getParcelable(ARG_ITEM);\n\n        long itemDuration = item.getLength();\n        mFileLength = itemDuration;\n        minutes = TimeUnit.MILLISECONDS.toMinutes(itemDuration);\n        seconds = TimeUnit.MILLISECONDS.toSeconds(itemDuration)\n                - TimeUnit.MINUTES.toSeconds(minutes);\n    }\n\n    @Override\n    public void onActivityCreated(Bundle savedInstanceState) {\n        super.onActivityCreated(savedInstanceState);\n    }\n\n    @SuppressLint(\"NewApi\")\n    @NonNull\n    @Override\n    public Dialog onCreateDialog(Bundle savedInstanceState) {\n\n        Dialog dialog = super.onCreateDialog(savedInstanceState);\n\n        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());\n        View view = getActivity().getLayoutInflater().inflate(R.layout.fragment_media_playback, null);\n\n        mFileNameTextView = (TextView) view.findViewById(R.id.file_name_text_view);\n        mFileLengthTextView = (TextView) view.findViewById(R.id.file_length_text_view);\n        mCurrentProgressTextView = (TextView) view.findViewById(R.id.current_progress_text_view);\n\n        mSeekBar = (SeekBar) view.findViewById(R.id.seekbar);\n        ColorFilter filter = new LightingColorFilter\n                (getResources().getColor(R.color.green), getResources().getColor(R.color.green));\n        mSeekBar.getProgressDrawable().setColorFilter(filter);\n        mSeekBar.getThumb().setColorFilter(filter);\n        mFileLengthTextView.setText(String.valueOf(mFileLength));\n        mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {\n            @Override\n            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {\n                if(mMediaPlayer != null && fromUser) {\n                    mMediaPlayer.seekTo(progress);\n                    mHandler.removeCallbacks(mRunnable);\n\n                    long minutes = TimeUnit.MILLISECONDS.toMinutes(mMediaPlayer.getCurrentPosition());\n                    long seconds = TimeUnit.MILLISECONDS.toSeconds(mMediaPlayer.getCurrentPosition())\n                            - TimeUnit.MINUTES.toSeconds(minutes);\n                    mCurrentProgressTextView.setText(String.format(\"%02d:%02d\", minutes,seconds));\n\n                    updateSeekBar();\n\n                } else if (mMediaPlayer == null && fromUser) {\n                    prepareMediaPlayerFromPoint(progress);\n                    updateSeekBar();\n                }\n            }\n\n            @Override\n            public void onStartTrackingTouch(SeekBar seekBar) {\n                if(mMediaPlayer != null) {\n                    // remove message Handler from updating progress bar\n                    mHandler.removeCallbacks(mRunnable);\n                }\n            }\n\n            @Override\n            public void onStopTrackingTouch(SeekBar seekBar) {\n                if (mMediaPlayer != null) {\n                    mHandler.removeCallbacks(mRunnable);\n                    mMediaPlayer.seekTo(seekBar.getProgress());\n\n                    long minutes = TimeUnit.MILLISECONDS.toMinutes(mMediaPlayer.getCurrentPosition());\n                    long seconds = TimeUnit.MILLISECONDS.toSeconds(mMediaPlayer.getCurrentPosition())\n                            - TimeUnit.MINUTES.toSeconds(minutes);\n                    mCurrentProgressTextView.setText(String.format(\"%02d:%02d\", minutes,seconds));\n                    updateSeekBar();\n                }\n            }\n        });\n\n        mPlayButton = (FloatingActionButton) view.findViewById(R.id.fab_play);\n        mPlayButton.setOnClickListener(new View.OnClickListener() {\n            @Override\n            public void onClick(View v) {\n                onPlay(isPlaying);\n                isPlaying = !isPlaying;\n            }\n        });\n\n        mFileNameTextView.setText(item.getName());\n        mFileLengthTextView.setText(String.format(\"%02d:%02d\", minutes,seconds));\n\n        builder.setView(view);\n\n        // request a window without the title\n        dialog.getWindow().requestFeature(Window.FEATURE_NO_TITLE);\n\n        return builder.create();\n    }\n\n    @Override\n    public void onStart() {\n        super.onStart();\n\n        //set transparent background\n        Window window = getDialog().getWindow();\n        window.setBackgroundDrawableResource(android.R.color.transparent);\n\n        //disable buttons from dialog\n        AlertDialog alertDialog = (AlertDialog) getDialog();\n        alertDialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(false);\n        alertDialog.getButton(Dialog.BUTTON_NEGATIVE).setEnabled(false);\n        alertDialog.getButton(Dialog.BUTTON_NEUTRAL).setEnabled(false);\n    }\n\n    @Override\n    public void onPause() {\n        super.onPause();\n\n        if (mMediaPlayer != null) {\n            stopPlaying();\n        }\n    }\n\n    @Override\n    public void onDestroy() {\n        super.onDestroy();\n\n        if (mMediaPlayer != null) {\n            stopPlaying();\n        }\n    }\n\n    // Play start/stop\n    private void onPlay(boolean isPlaying){\n        if (!isPlaying) {\n            //currently MediaPlayer is not playing audio\n            if(mMediaPlayer == null) {\n                startPlaying(); //start from beginning\n            } else {\n                resumePlaying(); //resume the currently paused MediaPlayer\n            }\n\n        } else {\n            pausePlaying();\n        }\n    }\n\n    private void startPlaying() {\n        mPlayButton.setImageResource(R.drawable.ic_media_pause);\n        mMediaPlayer = new MediaPlayer();\n\n        try {\n            mMediaPlayer.setDataSource(item.getFilePath());\n            mMediaPlayer.prepare();\n            mSeekBar.setMax(mMediaPlayer.getDuration());\n\n            mMediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {\n                @Override\n                public void onPrepared(MediaPlayer mp) {\n                    mMediaPlayer.start();\n                }\n            });\n        } catch (IOException e) {\n            Log.e(LOG_TAG, \"prepare() failed\");\n        }\n\n        mMediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {\n            @Override\n            public void onCompletion(MediaPlayer mp) {\n                stopPlaying();\n            }\n        });\n\n        updateSeekBar();\n\n        //keep screen on while playing audio\n        getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);\n    }\n\n    private void prepareMediaPlayerFromPoint(int progress) {\n        //set mediaPlayer to start from middle of the audio file\n\n        mMediaPlayer = new MediaPlayer();\n\n        try {\n            mMediaPlayer.setDataSource(item.getFilePath());\n            mMediaPlayer.prepare();\n            mSeekBar.setMax(mMediaPlayer.getDuration());\n            mMediaPlayer.seekTo(progress);\n\n            mMediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {\n                @Override\n                public void onCompletion(MediaPlayer mp) {\n                    stopPlaying();\n                }\n            });\n\n        } catch (IOException e) {\n            Log.e(LOG_TAG, \"prepare() failed\");\n        }\n\n        //keep screen on while playing audio\n        getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);\n    }\n\n    private void pausePlaying() {\n        mPlayButton.setImageResource(R.drawable.ic_media_play);\n        mHandler.removeCallbacks(mRunnable);\n        mMediaPlayer.pause();\n    }\n\n    private void resumePlaying() {\n        mPlayButton.setImageResource(R.drawable.ic_media_pause);\n        mHandler.removeCallbacks(mRunnable);\n        mMediaPlayer.start();\n        updateSeekBar();\n    }\n\n    private void stopPlaying() {\n        mPlayButton.setImageResource(R.drawable.ic_media_play);\n        mHandler.removeCallbacks(mRunnable);\n        mMediaPlayer.stop();\n        mMediaPlayer.reset();\n        mMediaPlayer.release();\n        mMediaPlayer = null;\n\n        mSeekBar.setProgress(mSeekBar.getMax());\n        isPlaying = !isPlaying;\n\n        mCurrentProgressTextView.setText(mFileLengthTextView.getText());\n        mSeekBar.setProgress(mSeekBar.getMax());\n\n        //allow the screen to turn off again once audio is finished playing\n        getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);\n    }\n\n    //updating mSeekBar\n    private Runnable mRunnable = new Runnable() {\n        @Override\n        public void run() {\n            if(mMediaPlayer != null){\n\n                int mCurrentPosition = mMediaPlayer.getCurrentPosition();\n                mSeekBar.setProgress(mCurrentPosition);\n\n                long minutes = TimeUnit.MILLISECONDS.toMinutes(mCurrentPosition);\n                long seconds = TimeUnit.MILLISECONDS.toSeconds(mCurrentPosition)\n                        - TimeUnit.MINUTES.toSeconds(minutes);\n                mCurrentProgressTextView.setText(String.format(\"%02d:%02d\", minutes, seconds));\n\n                updateSeekBar();\n            }\n        }\n    };\n\n    private void updateSeekBar() {\n        mHandler.postDelayed(mRunnable, 1000);\n    }\n}\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/java/com/zm/soundrecording/PlaybackDialogFragment.java	(revision 3e2808319d5565d44c71c97d6e5964515ee93fd4)
++++ app/src/main/java/com/zm/soundrecording/PlaybackDialogFragment.java	(revision )
+@@ -68,8 +68,7 @@
+         long itemDuration = item.getLength();
+         mFileLength = itemDuration;
+         minutes = TimeUnit.MILLISECONDS.toMinutes(itemDuration);
+-        seconds = TimeUnit.MILLISECONDS.toSeconds(itemDuration)
+-                - TimeUnit.MINUTES.toSeconds(minutes);
++        seconds = TimeUnit.MILLISECONDS.toSeconds(itemDuration) - TimeUnit.MINUTES.toSeconds(minutes);
+     }
+ 
+     @Override
+@@ -92,8 +91,7 @@
+         mCurrentProgressTextView = (TextView) view.findViewById(R.id.current_progress_text_view);
+ 
+         mSeekBar = (SeekBar) view.findViewById(R.id.seekbar);
+-        ColorFilter filter = new LightingColorFilter
+-                (getResources().getColor(R.color.green), getResources().getColor(R.color.green));
++        ColorFilter filter = new LightingColorFilter(getResources().getColor(R.color.green), getResources().getColor(R.color.green));
+         mSeekBar.getProgressDrawable().setColorFilter(filter);
+         mSeekBar.getThumb().setColorFilter(filter);
+         mFileLengthTextView.setText(String.valueOf(mFileLength));
+Index: app/src/main/res/layout/fragment_media_playback.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"utf-8\"?>\n<RelativeLayout xmlns:android=\"http://schemas.android.com/apk/res/android\"\n                xmlns:app=\"http://schemas.android.com/apk/res-auto\"\n                android:layout_width=\"fill_parent\"\n                android:layout_height=\"wrap_content\"\n                android:layout_gravity=\"center_vertical\"\n                android:orientation=\"vertical\">\n\n    <android.support.v7.widget.CardView\n        xmlns:card_view=\"http://schemas.android.com/apk/res-auto\"\n        android:id=\"@+id/mediaplayer_view\"\n        android:layout_width=\"match_parent\"\n        android:layout_height=\"wrap_content\"\n        android:layout_alignParentTop=\"true\"\n        android:layout_centerHorizontal=\"true\"\n        android:layout_gravity=\"center\"\n        android:transitionName=\"open_mediaplayer\"\n        card_view:cardElevation=\"3dp\">\n\n        <LinearLayout\n            android:layout_width=\"match_parent\"\n            android:layout_height=\"wrap_content\"\n            android:layout_margin=\"7dp\"\n            android:orientation=\"vertical\">\n\n            <TextView\n                android:id=\"@+id/file_name_text_view\"\n                android:layout_width=\"match_parent\"\n                android:layout_height=\"wrap_content\"\n                android:layout_marginBottom=\"7dp\"\n                android:layout_marginLeft=\"10dp\"\n                android:layout_marginTop=\"7dp\"\n                android:fontFamily=\"sans-serif-condensed\"\n                android:text=\"file_name.mp4\"\n                android:textSize=\"18sp\"/>\n\n            <SeekBar\n                android:id=\"@+id/seekbar\"\n                android:layout_width=\"match_parent\"\n                android:layout_height=\"wrap_content\"/>\n\n            <RelativeLayout\n                android:layout_width=\"match_parent\"\n                android:layout_height=\"wrap_content\">\n\n                <TextView\n                    android:id=\"@+id/current_progress_text_view\"\n                    android:layout_width=\"wrap_content\"\n                    android:layout_height=\"wrap_content\"\n                    android:layout_alignParentLeft=\"true\"\n                    android:layout_alignParentStart=\"true\"\n                    android:layout_alignParentTop=\"true\"\n                    android:layout_marginLeft=\"10dp\"\n                    android:text=\"00:00\"/>\n\n                <com.melnykov.fab.FloatingActionButton\n                    android:id=\"@+id/fab_play\"\n                    android:layout_width=\"wrap_content\"\n                    android:layout_height=\"wrap_content\"\n                    android:layout_centerHorizontal=\"true\"\n                    android:layout_marginBottom=\"10dp\"\n                    android:layout_marginTop=\"10dp\"\n                    android:src=\"@drawable/ic_media_play\"\n                    app:fab_colorNormal=\"@color/green\"\n                    app:fab_colorPressed=\"@color/green\"\n                    app:fab_shadow=\"false\"/>\n\n\n                <TextView\n                    android:id=\"@+id/file_length_text_view\"\n                    android:layout_width=\"wrap_content\"\n                    android:layout_height=\"wrap_content\"\n                    android:layout_alignParentEnd=\"true\"\n                    android:layout_alignParentRight=\"true\"\n                    android:layout_alignParentTop=\"true\"\n                    android:layout_marginRight=\"10dp\"\n                    android:text=\"00:00\"/>\n\n            </RelativeLayout>\n\n        </LinearLayout>\n\n    </android.support.v7.widget.CardView>\n\n</RelativeLayout>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/res/layout/fragment_media_playback.xml	(revision 3e2808319d5565d44c71c97d6e5964515ee93fd4)
++++ app/src/main/res/layout/fragment_media_playback.xml	(revision )
+@@ -31,7 +31,7 @@
+                 android:layout_marginLeft="10dp"
+                 android:layout_marginTop="7dp"
+                 android:fontFamily="sans-serif-condensed"
+-                android:text="file_name.mp4"
++                android:text="file_name.amr"
+                 android:textSize="18sp"/>
+ 
+             <SeekBar
+Index: app/src/main/java/com/zm/soundrecording/UploadFile.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/java/com/zm/soundrecording/UploadFile.java	(revision )
++++ app/src/main/java/com/zm/soundrecording/UploadFile.java	(revision )
+@@ -0,0 +1,107 @@
++package com.zm.soundrecording;
++
++import android.util.Log;
++
++import java.io.DataOutputStream;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.IOException;
++import java.io.InputStream;
++import java.net.HttpURLConnection;
++import java.net.MalformedURLException;
++import java.net.URL;
++import java.util.UUID;
++
++/**
++ * Created by zm on 2018/8/14.
++ */
++
++public class UploadFile {
++
++    private static final String TAG = "uploadFile";
++    private static final int TIME_OUT = 10 * 1000; //超时时间
++    private static final String CHARSET = "utf-8"; //设置编码
++
++    /**
++     * 上传文件到服务器
++     * @param path
++     * @param RequestURL
++     * @return
++     */
++    public static String uploadFile(String  path, String RequestURL) {
++        File file = new File(path);
++        String result = null;
++        String BOUNDARY = UUID.randomUUID().toString(); //边界标识 随机生成
++        String PREFIX = "--", LINE_END = "\r\n";
++        String CONTENT_TYPE = "multipart/form-data"; //内容类型
++
++        try {
++            URL url = new URL(RequestURL);
++            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
++            conn.setReadTimeout(TIME_OUT);
++            conn.setConnectTimeout(TIME_OUT);
++            conn.setDoInput(true); //允许输入流
++            conn.setDoOutput(true); //允许输出流
++            conn.setUseCaches(false); //不允许使用缓存
++            conn.setRequestMethod("POST"); //请求方式
++            conn.setRequestProperty("Charset", CHARSET); //设置编码
++            conn.setRequestProperty("connection", "keep-alive");
++            conn.setRequestProperty("Content-Type", CONTENT_TYPE + ";boundary=" + BOUNDARY);
++
++            if (file != null) {
++                /**
++                 * 当文件不为空，把文件包装并且上传
++                 */
++                DataOutputStream dos = new DataOutputStream(conn.getOutputStream());
++                StringBuffer sb = new StringBuffer();
++                sb.append(PREFIX);
++                sb.append(BOUNDARY);
++                sb.append(LINE_END);
++                /**
++                 * 这里重点注意：
++                 * name里面的值为服务器端需要key 只有这个key 才可以得到对应的文件
++                 * filename是文件的名字，包含后缀名的 比如:abc.png
++                 */
++                sb.append("Content-Disposition: form-data; name=\"img\"; filename=\"" + file.getName() + "\"" + LINE_END);
++                sb.append("Content-Type: application/octet-stream; charset=" + CHARSET + LINE_END);
++                sb.append(LINE_END);
++                dos.write(sb.toString().getBytes());
++                InputStream is = new FileInputStream(file);
++                byte[] bytes = new byte[1024];
++                int len = 0;
++                while ((len = is.read(bytes)) != -1) {
++                    dos.write(bytes, 0, len);
++                }
++                is.close();
++                dos.write(LINE_END.getBytes());
++                byte[] end_data = (PREFIX + BOUNDARY + PREFIX + LINE_END).getBytes();
++                dos.write(end_data);
++                dos.flush();
++                /**
++                 * 获取响应码 200=成功
++                 * 当响应成功，获取响应的流
++                 */
++                int res = conn.getResponseCode();
++                Log.e(TAG, "response code:" + res);
++                if (res == 200) {
++                    Log.e(TAG, "request success");
++                    InputStream input = conn.getInputStream();
++                    StringBuffer sb1 = new StringBuffer();
++                    int ss;
++                    while ((ss = input.read()) != -1) {
++                        sb1.append((char) ss);
++                    }
++                    result = sb1.toString();
++                    Log.e(TAG, "result : " + result);
++                } else {
++                    Log.e(TAG, "request error");
++                }
++            }
++        } catch (MalformedURLException e) {
++            e.printStackTrace();
++        } catch (IOException e) {
++            e.printStackTrace();
++        }
++        return result;
++    }
++}
+Index: app/src/main/res/layout/activity_main.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"utf-8\"?>\n<LinearLayout\n    xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    xmlns:app=\"http://schemas.android.com/apk/res-auto\"\n    xmlns:tools=\"http://schemas.android.com/tools\"\n    android:layout_width=\"match_parent\"\n    android:layout_height=\"match_parent\"\n    android:orientation=\"horizontal\">\n\n    <ImageView\n        android:id=\"@+id/record_sound_btn\"\n        android:layout_width=\"match_parent\"\n        android:layout_height=\"54dip\"\n        android:layout_weight=\"1\"\n        android:background=\"@color/colorAccent\"\n        android:scaleType=\"center\"\n        android:src=\"@drawable/ic_mic_white_36dp\"\n        />\n\n    <ImageView\n        android:id=\"@+id/play_sound_btn\"\n        android:layout_width=\"match_parent\"\n        android:layout_height=\"54dip\"\n        android:layout_weight=\"1\"\n        android:background=\"@color/green\"\n        android:scaleType=\"center\"\n        android:src=\"@drawable/ic_media_play\"\n        />\n\n</LinearLayout>\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/res/layout/activity_main.xml	(revision 3e2808319d5565d44c71c97d6e5964515ee93fd4)
++++ app/src/main/res/layout/activity_main.xml	(revision )
+@@ -5,13 +5,12 @@
+     xmlns:tools="http://schemas.android.com/tools"
+     android:layout_width="match_parent"
+     android:layout_height="match_parent"
+-    android:orientation="horizontal">
++    android:orientation="vertical">
+ 
+     <ImageView
+         android:id="@+id/record_sound_btn"
+         android:layout_width="match_parent"
+         android:layout_height="54dip"
+-        android:layout_weight="1"
+         android:background="@color/colorAccent"
+         android:scaleType="center"
+         android:src="@drawable/ic_mic_white_36dp"
+@@ -21,10 +20,31 @@
+         android:id="@+id/play_sound_btn"
+         android:layout_width="match_parent"
+         android:layout_height="54dip"
+-        android:layout_weight="1"
+         android:background="@color/green"
+         android:scaleType="center"
+         android:src="@drawable/ic_media_play"
+         />
+ 
++    <RelativeLayout
++        android:layout_width="match_parent"
++        android:layout_height="80dip"
++        android:layout_marginLeft="20dip"
++        android:layout_marginRight="20dip">
++
++        <android.support.v4.view.ViewPager
++            android:id="@+id/vp"
++            android:layout_width="match_parent"
++            android:layout_height="180dp"
++            android:background="@color/color_seach_bg"/>
++
++        <LinearLayout
++            android:id="@+id/ll_point"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:layout_alignParentBottom="true"
++            android:layout_marginTop="5dp"
++            android:gravity="center"
++            android:orientation="horizontal">
++        </LinearLayout>
++    </RelativeLayout>
+ </LinearLayout>
+Index: app/src/main/res/values/colors.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n    <color name=\"colorPrimary\">#3F51B5</color>\n    <color name=\"colorPrimaryDark\">#303F9F</color>\n    <color name=\"colorAccent\">#FF4081</color>\n\n    <color name=\"white\">#FFFFFF</color>\n    <color name=\"green\">#57D982</color>\n</resources>\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/res/values/colors.xml	(revision 3e2808319d5565d44c71c97d6e5964515ee93fd4)
++++ app/src/main/res/values/colors.xml	(revision )
+@@ -6,4 +6,22 @@
+ 
+     <color name="white">#FFFFFF</color>
+     <color name="green">#57D982</color>
++
++    <!-- Android新规范-->
++    <color name="color_00">#000000</color>
++    <color name="color_28">#282828</color>
++    <color name="color_66">#666666</color>
++    <color name="color_88">#888888</color>
++    <color name="color_9E">#9E9E9E</color>
++    <color name="color_FF">#FFFFFF</color>
++    <color name="color_YELLOW">#FFB433</color>
++    <color name="color_BLUE">#1A8AFA</color>
++    <color name="color_RED">#FF5C56</color>
++    <color name="color_7C">#7C88A4</color>
++    <color name="color_CC">#cccccc</color>
++    <color name="color_80">#808080</color>
++    <color name="color_seach_bg">#F0F0F4</color>
++    <color name="color_all_bg">#F8F8FA</color>
++    <color name="color_E6">#e6e6e6</color>
++    <color name="transparent">#00FFFFFF</color>
+ </resources>
+Index: app/src/main/res/drawable/point_selector.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/res/drawable/point_selector.xml	(revision )
++++ app/src/main/res/drawable/point_selector.xml	(revision )
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<selector xmlns:android="http://schemas.android.com/apk/res/android">
++    <item android:state_enabled="true"  android:drawable="@drawable/point_enable"/>
++    <item android:state_enabled="false"  android:drawable="@drawable/point_disable"/>
++</selector>
+\ No newline at end of file
+Index: app/src/main/res/drawable/point_enable.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/res/drawable/point_enable.xml	(revision )
++++ app/src/main/res/drawable/point_enable.xml	(revision )
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++       android:shape="oval">
++    <corners android:radius="8dp"/>
++    <solid android:color="@color/color_RED"/>
++</shape>
++
+Index: app/src/main/java/com/zm/soundrecording/RecordAudioDialogFragment.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package com.zm.soundrecording;\n\nimport android.Manifest;\nimport android.app.Dialog;\nimport android.content.Intent;\nimport android.content.pm.PackageManager;\nimport android.os.Bundle;\nimport android.os.Environment;\nimport android.os.SystemClock;\nimport android.support.annotation.NonNull;\nimport android.support.annotation.Nullable;\nimport android.support.v4.app.ActivityCompat;\nimport android.support.v4.app.DialogFragment;\nimport android.support.v4.content.ContextCompat;\nimport android.support.v7.app.AlertDialog;\nimport android.view.View;\nimport android.view.WindowManager;\nimport android.widget.Chronometer;\nimport android.widget.ImageView;\nimport android.widget.Toast;\n\nimport com.melnykov.fab.FloatingActionButton;\n\nimport java.io.File;\n\n/**\n * 开始录音的 DialogFragment\n */\n\npublic class RecordAudioDialogFragment extends DialogFragment {\n\n    private static final String TAG = \"RecordAudioDialogFragme\";\n\n    private int mRecordPromptCount = 0;\n\n    private boolean mStartRecording = true;\n    private boolean mPauseRecording = true;\n\n    long timeWhenPaused = 0;\n\n    private FloatingActionButton mFabRecord;\n    private Chronometer mChronometerTime;\n    private ImageView mIvClose;\n\n    private OnAudioCancelListener mListener;\n\n    public static RecordAudioDialogFragment newInstance() {\n        RecordAudioDialogFragment dialogFragment = new RecordAudioDialogFragment();\n        Bundle bundle = new Bundle();\n        dialogFragment.setArguments(bundle);\n        return dialogFragment;\n    }\n\n    @Override\n    public void onCreate(@Nullable Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n    }\n\n    @Override\n    public void onActivityCreated(Bundle savedInstanceState) {\n        super.onActivityCreated(savedInstanceState);\n    }\n\n    @NonNull\n    @Override\n    public Dialog onCreateDialog(Bundle savedInstanceState) {\n        Dialog dialog = super.onCreateDialog(savedInstanceState);\n        final AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());\n        View view = getActivity().getLayoutInflater().inflate(R.layout.fragment_record_audio, null);\n        initView(view);\n\n        mFabRecord.setColorNormal(getResources().getColor(R.color.colorAccent));\n        mFabRecord.setColorPressed(getResources().getColor(R.color.colorAccent));\n\n        mFabRecord.setOnClickListener(new View.OnClickListener() {\n            @Override\n            public void onClick(View v) {\n                if (ContextCompat.checkSelfPermission(getActivity(), Manifest.permission.WRITE_EXTERNAL_STORAGE)\n                        != PackageManager.PERMISSION_GRANTED) {\n                    ActivityCompat.requestPermissions(getActivity()\n                            , new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.RECORD_AUDIO}, 1);\n                } else {\n                    onRecord(mStartRecording);\n                    mStartRecording = !mStartRecording;\n                }\n\n            }\n        });\n\n        mIvClose.setOnClickListener(new View.OnClickListener() {\n            @Override\n            public void onClick(View v) {\n                mListener.onCancel();\n            }\n        });\n\n        builder.setCancelable(false);\n        builder.setView(view);\n        return builder.create();\n    }\n\n    private void initView(View view) {\n        mChronometerTime = (Chronometer) view.findViewById(R.id.record_audio_chronometer_time);\n        mFabRecord = (FloatingActionButton) view.findViewById(R.id.record_audio_fab_record);\n        mIvClose = (ImageView) view.findViewById(R.id.record_audio_iv_close);\n    }\n\n    Intent intent;\n\n    private void onRecord(boolean start) {\n\n        intent = new Intent(getActivity(), RecordingService.class);\n\n        if (start) {\n            // start recording\n            mFabRecord.setImageResource(R.drawable.ic_media_stop);\n            //mPauseButton.setVisibility(View.VISIBLE);\n            Toast.makeText(getActivity(), \"开始录音...\", Toast.LENGTH_SHORT).show();\n            File folder = new File(Environment.getExternalStorageDirectory() + \"/SoundRecorder\");\n            if (!folder.exists()) {\n                //folder /SoundRecorder doesn't exist, create the folder\n                folder.mkdir();\n            }\n\n            //start Chronometer\n            mChronometerTime.setBase(SystemClock.elapsedRealtime());\n            mChronometerTime.start();\n\n            //start RecordingService\n            getActivity().startService(intent);\n            //keep screen on while recording\n//            getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);\n\n\n        } else {\n            //stop recording\n            mFabRecord.setImageResource(R.drawable.ic_mic_white_36dp);\n            //mPauseButton.setVisibility(View.GONE);\n            mChronometerTime.stop();\n            timeWhenPaused = 0;\n            Toast.makeText(getActivity(), \"录音结束...\", Toast.LENGTH_SHORT).show();\n\n            getActivity().stopService(intent);\n            //allow the screen to turn off again once recording is finished\n            getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);\n        }\n    }\n\n    @Override\n    public void onDestroyView() {\n        if (!mStartRecording) {\n            //stop recording\n            mFabRecord.setImageResource(R.drawable.ic_mic_white_36dp);\n            //mPauseButton.setVisibility(View.GONE);\n            mChronometerTime.stop();\n            timeWhenPaused = 0;\n            Toast.makeText(getActivity(), \"录音结束...\", Toast.LENGTH_SHORT).show();\n\n            getActivity().stopService(intent);\n            //allow the screen to turn off again once recording is finished\n            getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);\n        }\n        super.onDestroyView();\n    }\n\n    public void setOnCancelListener(OnAudioCancelListener listener) {\n        this.mListener = listener;\n    }\n\n    @Override\n    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {\n        switch (requestCode) {\n            case 1:\n                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED\n                        && grantResults[1] == PackageManager.PERMISSION_GRANTED) {\n                    onRecord(mStartRecording);\n                }\n                break;\n        }\n    }\n\n    public interface OnAudioCancelListener {\n        void onCancel();\n    }\n}\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/java/com/zm/soundrecording/RecordAudioDialogFragment.java	(revision 3e2808319d5565d44c71c97d6e5964515ee93fd4)
++++ app/src/main/java/com/zm/soundrecording/RecordAudioDialogFragment.java	(revision )
+@@ -3,6 +3,7 @@
+ import android.Manifest;
+ import android.app.Dialog;
+ import android.content.Intent;
++import android.content.SharedPreferences;
+ import android.content.pm.PackageManager;
+ import android.os.Bundle;
+ import android.os.Environment;
+@@ -13,37 +14,40 @@
+ import android.support.v4.app.DialogFragment;
+ import android.support.v4.content.ContextCompat;
+ import android.support.v7.app.AlertDialog;
++import android.text.TextUtils;
+ import android.view.View;
+ import android.view.WindowManager;
+ import android.widget.Chronometer;
+-import android.widget.ImageView;
++import android.widget.EditText;
++import android.widget.TextView;
+ import android.widget.Toast;
+ 
+ import com.melnykov.fab.FloatingActionButton;
+ 
+ import java.io.File;
+ 
++import static android.content.Context.MODE_PRIVATE;
++
+ /**
+  * 开始录音的 DialogFragment
+  */
+ 
+-public class RecordAudioDialogFragment extends DialogFragment {
++public class RecordAudioDialogFragment extends DialogFragment implements View.OnClickListener {
+ 
+-    private static final String TAG = "RecordAudioDialogFragme";
+-
+-    private int mRecordPromptCount = 0;
+ 
+     private boolean mStartRecording = true;
+-    private boolean mPauseRecording = true;
+-
+-    long timeWhenPaused = 0;
+ 
+     private FloatingActionButton mFabRecord;
+     private Chronometer mChronometerTime;
+-    private ImageView mIvClose;
+ 
+     private OnAudioCancelListener mListener;
+ 
++    private TextView tv_record_title;
++    private TextView tv_input;
++    private TextView tv_record_again;
++    private TextView tv_record_send;
++    private EditText et_input;
++
+     public static RecordAudioDialogFragment newInstance() {
+         RecordAudioDialogFragment dialogFragment = new RecordAudioDialogFragment();
+         Bundle bundle = new Bundle();
+@@ -87,22 +91,44 @@
+             }
+         });
+ 
+-        mIvClose.setOnClickListener(new View.OnClickListener() {
+-            @Override
+-            public void onClick(View v) {
+-                mListener.onCancel();
+-            }
+-        });
+-
+         builder.setCancelable(false);
+         builder.setView(view);
+         return builder.create();
+     }
+ 
+     private void initView(View view) {
++        tv_record_title = (TextView) view.findViewById(R.id.tv_record_title);
++        tv_record_send = (TextView) view.findViewById(R.id.tv_record_send);
++        tv_record_again = (TextView) view.findViewById(R.id.tv_record_again);
++        tv_input = (TextView) view.findViewById(R.id.tv_input);
++        et_input = (EditText) view.findViewById(R.id.et_input);
++        tv_record_send.setOnClickListener(this);
++        tv_record_again.setOnClickListener(this);
++        tv_input.setOnClickListener(this);
++
+         mChronometerTime = (Chronometer) view.findViewById(R.id.record_audio_chronometer_time);
+         mFabRecord = (FloatingActionButton) view.findViewById(R.id.record_audio_fab_record);
+-        mIvClose = (ImageView) view.findViewById(R.id.record_audio_iv_close);
++        mChronometerTime.setOnChronometerTickListener(new Chronometer.OnChronometerTickListener() {
++            @Override
++            public void onChronometerTick(Chronometer chronometer) {
++                //SystemClock.elapsedRealtime()系统当前时间
++                //chronometer.getBase()记录计时器开始时的时间
++                if ((SystemClock.elapsedRealtime() - chronometer.getBase()) > 60 * 1000) {
++                    if (!mStartRecording) {
++                        //stop recording
++                        mFabRecord.setImageResource(R.drawable.ic_mic_white_36dp);
++                        //mPauseButton.setVisibility(View.GONE);
++                        mChronometerTime.stop();
++
++                        getActivity().stopService(intent);
++                        //allow the screen to turn off again once recording is finished
++                        getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
++                    }
++                    Toast.makeText(getActivity(), "录音1分钟结束...", Toast.LENGTH_SHORT).show();
++                    mStartRecording = true;
++                }
++            }
++        });
+     }
+ 
+     Intent intent;
+@@ -137,7 +163,6 @@
+             mFabRecord.setImageResource(R.drawable.ic_mic_white_36dp);
+             //mPauseButton.setVisibility(View.GONE);
+             mChronometerTime.stop();
+-            timeWhenPaused = 0;
+             Toast.makeText(getActivity(), "录音结束...", Toast.LENGTH_SHORT).show();
+ 
+             getActivity().stopService(intent);
+@@ -148,18 +173,7 @@
+ 
+     @Override
+     public void onDestroyView() {
+-        if (!mStartRecording) {
+-            //stop recording
+-            mFabRecord.setImageResource(R.drawable.ic_mic_white_36dp);
+-            //mPauseButton.setVisibility(View.GONE);
+-            mChronometerTime.stop();
+-            timeWhenPaused = 0;
+-            Toast.makeText(getActivity(), "录音结束...", Toast.LENGTH_SHORT).show();
+-
+-            getActivity().stopService(intent);
+-            //allow the screen to turn off again once recording is finished
+-            getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+-        }
++        isStartRecording();
+         super.onDestroyView();
+     }
+ 
+@@ -171,9 +185,9 @@
+     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+         switch (requestCode) {
+             case 1:
+-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED
+-                        && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
++                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+                     onRecord(mStartRecording);
++                    mStartRecording = !mStartRecording;
+                 }
+                 break;
+         }
+@@ -182,4 +196,74 @@
+     public interface OnAudioCancelListener {
+         void onCancel();
+     }
++
++    @Override
++    public void onClick(View view) {
++        switch (view.getId()) {
++            case R.id.tv_input:// 切换文字输入
++                if ("重新录制".equals(tv_record_again.getText().toString())) {
++                    tv_record_title.setText("推荐TA");
++                    tv_record_again.setText("重新输入");
++                    mChronometerTime.setVisibility(View.GONE);
++                    mFabRecord.setVisibility(View.GONE);
++                    et_input.setVisibility(View.VISIBLE);
++
++                    isStartRecording();
++                    mChronometerTime.setBase(SystemClock.elapsedRealtime());
++                    mStartRecording = true;
++                } else {
++                    tv_record_title.setText("录制语音");
++                    tv_record_again.setText("重新录制");
++                    mChronometerTime.setVisibility(View.VISIBLE);
++                    mFabRecord.setVisibility(View.VISIBLE);
++                    et_input.setVisibility(View.GONE);
++
++                    et_input.setHint("最多可输入100文字");
++                    et_input.setText("");
++                }
++                break;
++            case R.id.tv_record_again:// 重新录制
++                if ("重新录制".equals(tv_record_again.getText().toString())) {
++                    isStartRecording();
++                    onRecord(true);
++                    mStartRecording = false;
++                    mFabRecord.setImageResource(R.drawable.ic_media_stop);
++                } else if ("重新输入".equals(tv_record_again.getText().toString())) {
++                    et_input.setHint("最多可输入100文字");
++                    et_input.setText("");
++                }
++                break;
++            case R.id.tv_record_send:// 发送
++
++                if ("录制语音".equals(tv_record_title.getText().toString())) {
++                    isStartRecording();
++                    mChronometerTime.setBase(SystemClock.elapsedRealtime());
++                    mStartRecording = true;
++                    SharedPreferences sharePreferences = getActivity().getSharedPreferences("sp_name_audio", MODE_PRIVATE);
++                    final String filePath = sharePreferences.getString("audio_path", "");
++//                    UploadFile.uploadFile(filePath,"");
++                    Toast.makeText(getActivity(), "发送：" + filePath, Toast.LENGTH_SHORT).show();
++                } else {
++                    if (!TextUtils.isEmpty(et_input.getText().toString())) {
++                        Toast.makeText(getActivity(), "发送：" + et_input.getText().toString(), Toast.LENGTH_SHORT).show();
++                    } else {
++                        Toast.makeText(getActivity(), "请先输入推荐语~", Toast.LENGTH_SHORT).show();
++                    }
++                }
++                break;
++        }
++    }
++
++    /**
++     * 如果录音还没停止，则停止录音
++     */
++    public void isStartRecording() {
++        if (!mStartRecording) {
++            mFabRecord.setImageResource(R.drawable.ic_mic_white_36dp);
++            mChronometerTime.stop();
++
++            getActivity().stopService(intent);
++            getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
++        }
++    }
+ }
+Index: app/src/main/res/drawable/bg_gray_radius.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/res/drawable/bg_gray_radius.xml	(revision )
++++ app/src/main/res/drawable/bg_gray_radius.xml	(revision )
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android">
++
++    <solid android:color="@color/color_E6"/>
++
++    <corners
++        android:bottomLeftRadius="4dp"
++        android:bottomRightRadius="4dp"
++        android:topLeftRadius="4dp"
++        android:topRightRadius="4dp"/>
++
++</shape>
+\ No newline at end of file
+Index: app/src/main/res/layout/fragment_record_audio.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"utf-8\"?>\n<android.support.v7.widget.CardView\n    xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    xmlns:app=\"http://schemas.android.com/apk/res-auto\"\n    android:id=\"@+id/record_audio_cv\"\n    android:layout_width=\"match_parent\"\n    android:layout_height=\"wrap_content\"\n    android:layout_alignParentTop=\"true\"\n    android:layout_centerHorizontal=\"true\"\n    android:layout_gravity=\"center\"\n    android:transitionName=\"open_mediaplayer\"\n    app:cardElevation=\"3dp\"\n    >\n\n    <RelativeLayout\n        android:layout_width=\"fill_parent\"\n        android:layout_height=\"wrap_content\"\n        android:orientation=\"vertical\"\n        android:paddingBottom=\"48dp\"\n        android:paddingLeft=\"12dp\"\n        android:paddingRight=\"12dp\"\n        android:paddingTop=\"12dp\"\n        >\n\n        <ImageView\n            android:id=\"@+id/record_audio_iv_close\"\n            android:layout_width=\"24dp\"\n            android:layout_height=\"24dp\"\n            android:layout_alignParentRight=\"true\"\n            android:layout_alignParentTop=\"true\"\n            android:src=\"@drawable/ic_close\"\n            />\n\n        <com.melnykov.fab.FloatingActionButton\n            android:id=\"@+id/record_audio_fab_record\"\n            android:layout_width=\"120dp\"\n            android:layout_height=\"120dp\"\n            android:layout_below=\"@+id/record_audio_chronometer_time\"\n            android:layout_centerHorizontal=\"true\"\n            android:layout_marginTop=\"40dp\"\n            android:src=\"@drawable/ic_mic_white_36dp\"\n            app:fab_colorNormal=\"@color/colorAccent\"\n            app:fab_shadow=\"false\"\n            />\n\n        <Chronometer\n            android:id=\"@+id/record_audio_chronometer_time\"\n            android:layout_width=\"240dp\"\n            android:layout_height=\"84dp\"\n            android:layout_below=\"@+id/record_audio_iv_close\"\n            android:layout_centerHorizontal=\"true\"\n            android:fontFamily=\"sans-serif-light\"\n            android:gravity=\"center\"\n            android:textSize=\"60sp\"\n            />\n\n\n    </RelativeLayout>\n</android.support.v7.widget.CardView>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/res/layout/fragment_record_audio.xml	(revision 3e2808319d5565d44c71c97d6e5964515ee93fd4)
++++ app/src/main/res/layout/fragment_record_audio.xml	(revision )
+@@ -1,59 +1,105 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<android.support.v7.widget.CardView
++<LinearLayout
+     xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:app="http://schemas.android.com/apk/res-auto"
+-    android:id="@+id/record_audio_cv"
+     android:layout_width="match_parent"
+-    android:layout_height="wrap_content"
+-    android:layout_alignParentTop="true"
+-    android:layout_centerHorizontal="true"
+-    android:layout_gravity="center"
+-    android:transitionName="open_mediaplayer"
+-    app:cardElevation="3dp"
+-    >
+-
+-    <RelativeLayout
+-        android:layout_width="fill_parent"
+-        android:layout_height="wrap_content"
+-        android:orientation="vertical"
+-        android:paddingBottom="48dp"
+-        android:paddingLeft="12dp"
+-        android:paddingRight="12dp"
+-        android:paddingTop="12dp"
+-        >
+-
+-        <ImageView
+-            android:id="@+id/record_audio_iv_close"
+-            android:layout_width="24dp"
+-            android:layout_height="24dp"
+-            android:layout_alignParentRight="true"
+-            android:layout_alignParentTop="true"
+-            android:src="@drawable/ic_close"
+-            />
++    android:layout_height="match_parent"
++    android:background="@drawable/bg_white_radius"
++    android:gravity="center"
++    android:orientation="vertical"
++    android:paddingLeft="10dip"
++    android:paddingRight="10dip"
++    android:paddingTop="10dip"
++    >
++
++    <TextView
++        android:id="@+id/tv_record_title"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_centerHorizontal="true"
++        android:text="录制语音"
++        android:textColor="@color/color_28"
++        android:textSize="@dimen/text_T4"
++        />
++
++    <Chronometer
++        android:id="@+id/record_audio_chronometer_time"
++        android:layout_width="240dp"
++        android:layout_height="84dp"
++        android:layout_below="@+id/tv_record_title"
++        android:layout_centerHorizontal="true"
++        android:fontFamily="sans-serif-light"
++        android:gravity="center"
++        android:textSize="40dip"/>
+ 
+-        <com.melnykov.fab.FloatingActionButton
+-            android:id="@+id/record_audio_fab_record"
+-            android:layout_width="120dp"
+-            android:layout_height="120dp"
+-            android:layout_below="@+id/record_audio_chronometer_time"
+-            android:layout_centerHorizontal="true"
+-            android:layout_marginTop="40dp"
+-            android:src="@drawable/ic_mic_white_36dp"
+-            app:fab_colorNormal="@color/colorAccent"
+-            app:fab_shadow="false"
+-            />
++    <com.melnykov.fab.FloatingActionButton
++        android:id="@+id/record_audio_fab_record"
++        android:layout_width="100dp"
++        android:layout_height="100dp"
++        android:layout_below="@+id/record_audio_chronometer_time"
++        android:layout_centerHorizontal="true"
++        android:layout_marginTop="10dip"
++        android:src="@drawable/ic_mic_white_36dp"
++        app:fab_colorNormal="@color/colorAccent"
++        app:fab_shadow="false"
++        />
+ 
+-        <Chronometer
+-            android:id="@+id/record_audio_chronometer_time"
+-            android:layout_width="240dp"
+-            android:layout_height="84dp"
+-            android:layout_below="@+id/record_audio_iv_close"
+-            android:layout_centerHorizontal="true"
+-            android:fontFamily="sans-serif-light"
++    <EditText
++        android:id="@+id/et_input"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="10dip"
++        android:background="@drawable/bg_gray_radius"
++        android:gravity="top|left"
++        android:hint="最多可输入100文字"
++        android:inputType="textMultiLine"
++        android:maxLength="100"
++        android:minLines="5"
++        android:padding="8dp"
++        android:textSize="@dimen/text_T4"
++        android:visibility="gone"/>
++
++    <TextView
++        android:id="@+id/tv_input"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_below="@+id/record_audio_fab_record"
++        android:layout_centerHorizontal="true"
++        android:padding="10dip"
++        android:text="切换文字输入"
++        android:textColor="@color/color_28"
++        android:textSize="@dimen/text_T2"
++        />
++
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_below="@+id/tv_input"
++        android:layout_marginTop="10dip"
++        android:background="@mipmap/icon_button"
++        android:orientation="horizontal">
++
++        <TextView
++            android:id="@+id/tv_record_again"
++            android:layout_width="0dp"
++            android:layout_height="@dimen/i_40dp"
++            android:layout_weight="1"
+             android:gravity="center"
+-            android:textSize="60sp"
+-            />
++            android:padding="10dip"
++            android:text="重新录制"
++            android:textColor="@color/color_9E"
++            android:textSize="@dimen/text_T5"/>
+ 
++        <TextView
++            android:id="@+id/tv_record_send"
++            android:layout_width="0dp"
++            android:layout_height="@dimen/i_40dp"
++            android:layout_weight="1"
++            android:gravity="center"
++            android:padding="10dip"
++            android:text="发送"
++            android:textColor="@color/color_28"
++            android:textSize="@dimen/text_T5"/>
++    </LinearLayout>
+ 
+-    </RelativeLayout>
+-</android.support.v7.widget.CardView>
+\ No newline at end of file
++</LinearLayout>
+\ No newline at end of file
+Index: app/src/main/res/values/styles.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><resources>\n\n    <!-- Base application theme. -->\n    <style name=\"AppTheme\" parent=\"Theme.AppCompat.Light.DarkActionBar\">\n        <!-- Customize your theme here. -->\n        <item name=\"colorPrimary\">@color/colorAccent</item>\n        <item name=\"colorPrimaryDark\">@color/colorAccent</item>\n        <item name=\"colorAccent\">@color/colorAccent</item>\n    </style>\n\n</resources>\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/res/values/styles.xml	(revision 3e2808319d5565d44c71c97d6e5964515ee93fd4)
++++ app/src/main/res/values/styles.xml	(revision )
+@@ -8,4 +8,34 @@
+         <item name="colorAccent">@color/colorAccent</item>
+     </style>
+ 
++    <!-- Android新规范-->
++    <dimen name="text_T1">11sp</dimen>
++    <dimen name="text_T2">12sp</dimen>
++    <dimen name="text_T3">13sp</dimen>
++    <dimen name="text_T4">14sp</dimen>
++    <dimen name="text_T5">15sp</dimen>
++    <dimen name="text_T6">16sp</dimen>
++    <dimen name="text_T7">17sp</dimen>
++    <dimen name="text_T8">18sp</dimen>
++    <dimen name="text_T9">19sp</dimen>
++    <dimen name="text_T10">20sp</dimen>
++    <dimen name="text_T11">21sp</dimen>
++    <dimen name="text_T12">22sp</dimen>
++    <dimen name="resume_max_width">60dp</dimen>
++
++    <dimen name="i_15dp">15dp</dimen>
++    <dimen name="i_16dp">16dp</dimen>
++    <dimen name="i_50dp">50dp</dimen>
++    <dimen name="i_20dp">20dp</dimen>
++    <dimen name="i_27dp">27dp</dimen>
++    <dimen name="i_30dp">30dp</dimen>
++    <dimen name="i_38dp">38dp</dimen>
++    <dimen name="i_40dp">40dp</dimen>
++    <dimen name="i_48dp">48dp</dimen>
++    <dimen name="i_68dp">68dp</dimen>
++    <dimen name="i_75dp">75dp</dimen>
++    <dimen name="i_34dp">42dp</dimen>
++    <dimen name="i_35dp">35dp</dimen>
++    <dimen name="i_44dp">44dp</dimen>
++    <dimen name="i_46dp">46dp</dimen>
+ </resources>
+Index: app/src/main/java/com/zm/soundrecording/RecordingService.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package com.zm.soundrecording;\n\nimport android.app.Service;\nimport android.content.Intent;\nimport android.media.MediaRecorder;\nimport android.os.Environment;\nimport android.os.IBinder;\nimport android.util.Log;\n\nimport java.io.File;\nimport java.io.IOException;\nimport java.util.TimerTask;\n\n/**\n * 录音的 Service\n *\n */\n\npublic class RecordingService extends Service {\n\n    private static final String LOG_TAG = \"RecordingService\";\n\n    private String mFileName = null;\n    private String mFilePath = null;\n\n    private MediaRecorder mRecorder = null;\n\n    private long mStartingTimeMillis = 0;\n    private long mElapsedMillis = 0;\n    private TimerTask mIncrementTimerTask = null;\n\n    @Override\n    public IBinder onBind(Intent intent) {\n        return null;\n    }\n\n    @Override\n    public void onCreate() {\n        super.onCreate();\n    }\n\n    @Override\n    public int onStartCommand(Intent intent, int flags, int startId) {\n        startRecording();\n        return START_STICKY;\n    }\n\n    @Override\n    public void onDestroy() {\n        if (mRecorder != null) {\n            stopRecording();\n        }\n        super.onDestroy();\n    }\n\n    public void startRecording() {\n        setFileNameAndPath();\n\n        mRecorder = new MediaRecorder();\n        mRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);\n        mRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);\n        mRecorder.setOutputFile(mFilePath);\n        mRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);\n        mRecorder.setAudioChannels(1);\n        mRecorder.setAudioSamplingRate(44100);\n        mRecorder.setAudioEncodingBitRate(192000);\n\n        try {\n            mRecorder.prepare();\n            mRecorder.start();\n            mStartingTimeMillis = System.currentTimeMillis();\n        } catch (IOException e) {\n            Log.e(LOG_TAG, \"prepare() failed\");\n        }\n    }\n\n    public void setFileNameAndPath() {\n        int count = 0;\n        File f;\n\n        do {\n            count++;\n            mFileName = getString(R.string.default_file_name)\n                    + \"_\" + (System.currentTimeMillis()) + \".mp4\";\n            mFilePath = Environment.getExternalStorageDirectory().getAbsolutePath();\n            mFilePath += \"/SoundRecorder/\" + mFileName;\n            f = new File(mFilePath);\n        } while (f.exists() && !f.isDirectory());\n    }\n\n    public void stopRecording() {\n        mRecorder.stop();\n        mElapsedMillis = (System.currentTimeMillis() - mStartingTimeMillis);\n        mRecorder.release();\n\n        getSharedPreferences(\"sp_name_audio\", MODE_PRIVATE)\n                .edit()\n                .putString(\"audio_path\", mFilePath)\n                .putLong(\"elpased\", mElapsedMillis)\n                .apply();\n        if (mIncrementTimerTask != null) {\n            mIncrementTimerTask.cancel();\n            mIncrementTimerTask = null;\n        }\n\n        mRecorder = null;\n    }\n\n}\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/java/com/zm/soundrecording/RecordingService.java	(revision 3e2808319d5565d44c71c97d6e5964515ee93fd4)
++++ app/src/main/java/com/zm/soundrecording/RecordingService.java	(revision )
+@@ -80,8 +80,7 @@
+ 
+         do {
+             count++;
+-            mFileName = getString(R.string.default_file_name)
+-                    + "_" + (System.currentTimeMillis()) + ".mp4";
++            mFileName = "zp_recording_" + (System.currentTimeMillis()) + ".amr";
+             mFilePath = Environment.getExternalStorageDirectory().getAbsolutePath();
+             mFilePath += "/SoundRecorder/" + mFileName;
+             f = new File(mFilePath);
+Index: app/src/main/res/drawable/point_disable.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/res/drawable/point_disable.xml	(revision )
++++ app/src/main/res/drawable/point_disable.xml	(revision )
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++       android:shape="oval">
++    <corners android:radius="8dp"/>
++    <solid android:color="@color/color_BLUE"/>
++</shape>
++
+Index: app/src/main/java/com/zm/soundrecording/MainActivity.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package com.zm.soundrecording;\n\nimport android.content.SharedPreferences;\nimport android.os.Bundle;\nimport android.support.v7.app.AppCompatActivity;\nimport android.view.View;\nimport android.widget.ImageView;\n\npublic class MainActivity extends AppCompatActivity implements View.OnClickListener {\n\n    private ImageView mBtnRecordAudio;\n    private ImageView mBtnPlayAudio;\n    private RecordAudioDialogFragment fragment;\n\n    @Override\n    protected void onCreate(Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n        setContentView(R.layout.activity_main);\n        initView();\n    }\n\n    private void initView() {\n        mBtnRecordAudio = findViewById(R.id.record_sound_btn);\n        mBtnPlayAudio = findViewById(R.id.play_sound_btn);\n        mBtnRecordAudio.setOnClickListener(this);\n        mBtnPlayAudio.setOnClickListener(this);\n    }\n\n    @Override\n    public void onClick(View view) {\n        switch (view.getId()) {\n            case R.id.record_sound_btn:\n                fragment = RecordAudioDialogFragment.newInstance();\n                fragment.show(getSupportFragmentManager(), RecordAudioDialogFragment.class.getSimpleName());\n                fragment.setOnCancelListener(new RecordAudioDialogFragment.OnAudioCancelListener() {\n                    @Override\n                    public void onCancel() {\n                        fragment.dismiss();\n                    }\n                });\n                break;\n            case R.id.play_sound_btn:\n                RecordingItem recordingItem = new RecordingItem();\n                SharedPreferences sharePreferences = getSharedPreferences(\"sp_name_audio\", MODE_PRIVATE);\n                final String filePath = sharePreferences.getString(\"audio_path\", \"\");\n                long elpased = sharePreferences.getLong(\"elpased\", 0);\n                recordingItem.setFilePath(filePath);\n                recordingItem.setLength((int) elpased);\n                PlaybackDialogFragment fragmentPlay = PlaybackDialogFragment.newInstance(recordingItem);\n                fragmentPlay.show(getSupportFragmentManager(), PlaybackDialogFragment.class.getSimpleName());\n                break;\n        }\n    }\n}\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- app/src/main/java/com/zm/soundrecording/MainActivity.java	(revision 3e2808319d5565d44c71c97d6e5964515ee93fd4)
++++ app/src/main/java/com/zm/soundrecording/MainActivity.java	(revision )
+@@ -2,21 +2,36 @@
+ 
+ import android.content.SharedPreferences;
+ import android.os.Bundle;
++import android.support.v4.view.PagerAdapter;
++import android.support.v4.view.ViewPager;
+ import android.support.v7.app.AppCompatActivity;
+ import android.view.View;
++import android.view.ViewGroup;
+ import android.widget.ImageView;
++import android.widget.LinearLayout;
++import android.widget.TextView;
+ 
+-public class MainActivity extends AppCompatActivity implements View.OnClickListener {
++import java.util.ArrayList;
++
++public class MainActivity extends AppCompatActivity implements View.OnClickListener, ViewPager.OnPageChangeListener {
+ 
+     private ImageView mBtnRecordAudio;
+     private ImageView mBtnPlayAudio;
+     private RecordAudioDialogFragment fragment;
+ 
++    private ViewPager vp;
++    private LinearLayout ll_point;
++    private String[] contentDescs; //图片内容描述
++    private int lastPosition;
++    private ArrayList<TextView> textViewViews; //存放图片的集合
++
+     @Override
+     protected void onCreate(Bundle savedInstanceState) {
+         super.onCreate(savedInstanceState);
+         setContentView(R.layout.activity_main);
+         initView();
++        initData();
++        initAdapter();
+     }
+ 
+     private void initView() {
+@@ -24,6 +39,120 @@
+         mBtnPlayAudio = findViewById(R.id.play_sound_btn);
+         mBtnRecordAudio.setOnClickListener(this);
+         mBtnPlayAudio.setOnClickListener(this);
++
++        //初始化放小圆点的控件
++        ll_point = (LinearLayout) findViewById(R.id.ll_point);
++        //初始化ViewPager控件
++        vp = (ViewPager) findViewById(R.id.vp);
++        //设置ViewPager的滚动监听
++        vp.setOnPageChangeListener(this);
++    }
++
++    /*
++     初始化数据
++    */
++    private void initData() {
++        //图片的描述信息
++        contentDescs = new String[]{
++                "作为TA的朋友，我认为TA学习能力强，有很强的逆向思维能力和总结问题的能力。",
++                "我认为TA学习能力强，有很强的逆向思维能力和总结问题的能力。作为TA的朋友，",
++                "有很强的逆向思维能力和总结问题的能力。作为TA的朋友，我认为TA学习能力强，",
++                "作为TA的朋友，",
++                "我认为TA学习能力强"
++        };
++
++        textViewViews = new ArrayList<>();
++
++        //保存图片资源的集合
++        TextView textView;
++        View pointView;
++        //循环遍历图片资源，然后保存到集合中
++        for (int i = 0; i < contentDescs.length; i++) {
++            //添加图片到集合中
++            textView = new TextView(this);
++            textView.setText(contentDescs[i]);
++            textViewViews.add(textView);
++
++            //加小白点，指示器（这里的小圆点定义在了drawable下的选择器中了，也可以用小图片代替）
++            pointView = new View(this);
++            pointView.setBackgroundResource(R.drawable.point_selector); //使用选择器设置背景
++            LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(20, 20);
++            if (i != 0) {
++                //如果不是第一个点，则设置点的左边距
++                layoutParams.leftMargin = 10;
++            }
++            pointView.setEnabled(false); //默认都是暗色的
++            ll_point.addView(pointView, layoutParams);
++        }
++    }
++
++    /*
++      初始化适配器
++     */
++    private void initAdapter() {
++        ll_point.getChildAt(0).setEnabled(true); //初始化控件时，设置第一个小圆点为亮色
++        lastPosition = 0; //设置之前的位置为第一个
++        vp.setAdapter(new MyPagerAdapter());
++        //设置默认显示中间的某个位置（这样可以左右滑动），这个数只有在整数范围内，可以随便设置
++        vp.setCurrentItem(5000000); //显示5000000这个位置的图片
++    }
++
++
++    /*
++      自定义适配器，继承自PagerAdapter
++     */
++    class MyPagerAdapter extends PagerAdapter {
++        //返回显示数据的总条数，为了实现无限循环，把返回的值设置为最大整数
++        @Override
++        public int getCount() {
++            return Integer.MAX_VALUE;
++        }
++
++        @Override
++        public boolean isViewFromObject(View view, Object object) {
++            //当创建新的条目，又反回来，判断view是否可以被复用(即是否存在)
++            return view == object;
++        }
++
++        @Override
++        public Object instantiateItem(ViewGroup container, int position) {
++            int newPosition = position % 5;
++            TextView textView = textViewViews.get(newPosition);
++            textView.setPadding(10, 10, 10, 10);
++            textView.setTextColor(getResources().getColor(R.color.color_66));
++            textView.setLineSpacing(5, 1);
++            container.addView(textView);
++            return textView;
++        }
++
++        @Override
++        public void destroyItem(ViewGroup container, int position, Object object) {
++            container.removeView((View) object);
++        }
++    }
++
++    //--------------以下是设置ViewPager的滚动监听所需实现的方法--------
++    //页面滑动
++    @Override
++    public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
++
++    }
++
++    //新的页面被选中
++    @Override
++    public void onPageSelected(int position) {
++        //当前的位置可能很大，为了防止下标越界，对要显示的图片的总数进行取余
++        int newPosition = position % 5;
++        //设置小圆点为高亮或暗色
++        ll_point.getChildAt(lastPosition).setEnabled(false);
++        ll_point.getChildAt(newPosition).setEnabled(true);
++        lastPosition = newPosition; //记录之前的点
++    }
++
++    //页面滑动状态发生改变
++    @Override
++    public void onPageScrollStateChanged(int state) {
++
+     }
+ 
+     @Override
