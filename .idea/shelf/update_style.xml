@@ -1,9 +1,0 @@
-<changelist name="update_style" date="1534489590894" recycled="false">
-  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/update_style/shelved.patch" />
-  <option name="DESCRIPTION" value="update style" />
-  <binary>
-    <option name="BEFORE_PATH" />
-    <option name="AFTER_PATH" value="app/src/main/res/mipmap-xxxhdpi/icon_button.png" />
-    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/update_style/icon_button.png" />
-  </binary>
-</changelist>
