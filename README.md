@@ -2,7 +2,7 @@
 
 参考自：https://github.com/dkim0419/SoundRecorder
 
-MyBlog: [zhangmiao.cc](https://zhangmiao.cc/2018/08/09/%E5%BD%95%E9%9F%B3SoundRecording/)
+MyBlog: [zhangmiao.cc](https://zhangmiao.cc/posts/58d30177.html)
 #### 效果图
 | 首页 | 录音 | 播放 |
 | ---- | ---- | ---- |
